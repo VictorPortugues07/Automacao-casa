@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Controle de Casa com ESP32 BLE</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        margin: 0;
+        color: white;
+      }
+      .container {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        max-width: 600px;
+        width: 100%;
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        font-weight: 300;
+        font-size: 2.2em;
+      }
+      .voice-status {
+        text-align: center;
+        margin: 20px 0;
+        font-size: 1.2em;
+        font-weight: bold;
+      }
+      .listening {
+        color: #4caf50;
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          opacity: 0.6;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.6;
+        }
+      }
+      .relay-control {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin-top: 30px;
+        align-items: center;
+      }
+      button {
+        padding: 15px 25px;
+        font-size: 16px;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: none;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      }
+      .connect {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        color: white;
+        margin-bottom: 20px;
+        width: 100%;
+      }
+      .voice-toggle {
+        background: linear-gradient(45deg, #ff6b6b, #ee5a5a);
+        color: white;
+        margin-bottom: 20px;
+        width: 100%;
+      }
+      .voice-toggle.active {
+        background: linear-gradient(45deg, #4caf50, #45a049);
+      }
+      .on {
+        background: linear-gradient(45deg, #28a745, #20c997);
+        color: white;
+      }
+      .off {
+        background: linear-gradient(45deg, #dc3545, #c82333);
+        color: white;
+      }
+      .status {
+        text-align: center;
+        margin: 20px 0;
+        font-weight: bold;
+        padding: 10px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .device-name {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.1em;
+      }
+      .led {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-left: 15px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        transition: all 0.3s ease;
+      }
+      .led.off {
+        background: rgba(255, 255, 255, 0.2);
+        box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .led.on {
+        background: #4caf50;
+        box-shadow: 0 0 20px rgba(76, 175, 80, 0.6);
+        border-color: #4caf50;
+      }
+      .command-log {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 20px;
+        max-height: 150px;
+        overflow-y: auto;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+      }
+      .log-entry {
+        margin: 5px 0;
+        padding: 5px;
+        border-left: 3px solid #4caf50;
+        padding-left: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🏠 Controle de Casa - ESP32 BLE</h1>
+
+      <button class="connect" onclick="connect()">🔗 Conectar ao ESP32</button>
+      <div class="status" id="status">Status: Desconectado</div>
+
+      <button
+        class="voice-toggle"
+        id="voiceToggle"
+        onclick="toggleVoiceRecognition()"
+      >
+        🎤 Ativar Comando de Voz
+      </button>
+      <div class="voice-status" id="voiceStatus">Comando de voz desativado</div>
+
+      <div class="relay-control">
+        <div class="device-name">
+          Ventilador <span class="led off" id="led1"></span>
+        </div>
+        <button class="on" onclick="sendCommand('ON1')">Ligar</button>
+        <button class="off" onclick="sendCommand('OFF1')">Desligar</button>
+
+        <div class="device-name">
+          Luz <span class="led off" id="led2"></span>
+        </div>
+        <button class="on" onclick="sendCommand('ON2')">Ligar</button>
+        <button class="off" onclick="sendCommand('OFF2')">Desligar</button>
+
+        <div class="device-name">
+          🎵 Careless Whisper <span class="led off" id="led3"></span>
+        </div>
+        <button class="on" onclick="sendCommand('ON3')">Ligar</button>
+        <button class="off" onclick="sendCommand('OFF3')">Desligar</button>
+
+        <div class="device-name">
+          Relé 4 <span class="led off" id="led4"></span>
+        </div>
+        <button class="on" onclick="sendCommand('ON4')">Ligar</button>
+        <button class="off" onclick="sendCommand('OFF4')">Desligar</button>
+      </div>
+
+      <div class="command-log" id="commandLog">
+        <div><strong>Log de Comandos:</strong></div>
+        <div style="font-size: 12px; margin-top: 10px; opacity: 0.8">
+          <strong>Comandos disponíveis:</strong><br />
+          • Para LIGAR: "Casa, ligar [dispositivo]" ou "Casa, ativar
+          [dispositivo]"<br />
+          • Para DESLIGAR: "Casa, parar [dispositivo]" ou "Casa, apagar
+          [dispositivo]" ou "Casa, fechar [dispositivo]"<br />
+          • Dispositivos: ventilador, luz, música, relé 4
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let bleDevice;
+      let bleServer;
+      let characteristic;
+      let recognition;
+      let isVoiceActive = false;
+
+      const SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab";
+      const CHARACTERISTIC_UUID = "abcd1234-5678-90ab-cdef-1234567890ab";
+
+      const statusEl = document.getElementById("status");
+      const voiceStatusEl = document.getElementById("voiceStatus");
+      const voiceToggleBtn = document.getElementById("voiceToggle");
+      const commandLogEl = document.getElementById("commandLog");
+
+      const leds = [
+        document.getElementById("led1"),
+        document.getElementById("led2"),
+        document.getElementById("led3"),
+        document.getElementById("led4"),
+      ];
+
+      // Inicializar reconhecimento de voz
+      function initVoiceRecognition() {
+        if (
+          "webkitSpeechRecognition" in window ||
+          "SpeechRecognition" in window
+        ) {
+          recognition = new (window.SpeechRecognition ||
+            window.webkitSpeechRecognition)();
+          recognition.lang = "pt-BR";
+          recognition.continuous = true;
+          recognition.interimResults = true;
+
+          recognition.onresult = function (event) {
+            let finalTranscript = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript;
+              }
+            }
+
+            if (finalTranscript) {
+              const command = finalTranscript.toLowerCase().trim();
+              addToLog(`Ouviu: "${command}"`);
+              handleVoiceCommand(command);
+            }
+          };
+
+          recognition.onerror = function (event) {
+            console.error("Erro no reconhecimento de voz:", event.error);
+            if (event.error === "no-speech") {
+              // Reiniciar automaticamente se não houver fala
+              if (isVoiceActive) {
+                setTimeout(() => {
+                  if (isVoiceActive) recognition.start();
+                }, 1000);
+              }
+            }
+          };
+
+          recognition.onend = function () {
+            if (isVoiceActive) {
+              // Reiniciar reconhecimento automaticamente
+              setTimeout(() => {
+                if (isVoiceActive) recognition.start();
+              }, 100);
+            }
+          };
+        } else {
+          alert("Seu navegador não suporta reconhecimento de voz.");
+        }
+      }
+
+      // Alternar reconhecimento de voz
+      function toggleVoiceRecognition() {
+        if (!recognition) {
+          initVoiceRecognition();
+        }
+
+        if (isVoiceActive) {
+          stopVoiceRecognition();
+        } else {
+          startVoiceRecognition();
+        }
+      }
+
+      function startVoiceRecognition() {
+        if (!recognition) return;
+
+        isVoiceActive = true;
+        recognition.start();
+        voiceStatusEl.innerHTML =
+          '<span class="listening">🎤 Escutando... Diga "Casa" + comando</span>';
+        voiceToggleBtn.textContent = "🔇 Desativar Comando de Voz";
+        voiceToggleBtn.classList.add("active");
+        addToLog("Reconhecimento de voz ativado");
+      }
+
+      function stopVoiceRecognition() {
+        isVoiceActive = false;
+        if (recognition) {
+          recognition.stop();
+        }
+        voiceStatusEl.textContent = "Comando de voz desativado";
+        voiceToggleBtn.textContent = "🎤 Ativar Comando de Voz";
+        voiceToggleBtn.classList.remove("active");
+        addToLog("Reconhecimento de voz desativado");
+      }
+
+      // Conectar ao ESP32
+      async function connect() {
+        try {
+          statusEl.textContent = "Status: Conectando...";
+          bleDevice = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [SERVICE_UUID],
+          });
+
+          bleDevice.addEventListener("gattserverdisconnected", onDisconnected);
+          bleServer = await bleDevice.gatt.connect();
+          const service = await bleServer.getPrimaryService(SERVICE_UUID);
+          characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+          statusEl.textContent = "Status: Conectado ✅";
+          addToLog("Conectado ao ESP32 BLE");
+        } catch (error) {
+          statusEl.textContent = "Status: Erro na conexão ❌";
+          addToLog(`Erro ao conectar: ${error.message}`);
+        }
+      }
+
+      function onDisconnected() {
+        statusEl.textContent = "Status: Desconectado ❌";
+        addToLog("Dispositivo desconectado. Tentando reconectar...");
+        setTimeout(reconnect, 3000);
+      }
+
+      async function reconnect() {
+        try {
+          if (!bleDevice) return;
+          bleServer = await bleDevice.gatt.connect();
+          const service = await bleServer.getPrimaryService(SERVICE_UUID);
+          characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+          statusEl.textContent = "Status: Reconectado ✅";
+          addToLog("Reconectado ao ESP32 BLE");
+        } catch (error) {
+          addToLog("Falha ao reconectar, tentando novamente em 3s");
+          setTimeout(reconnect, 3000);
+        }
+      }
+
+      async function sendCommand(cmd) {
+        if (!characteristic) {
+          alert("Conecte-se ao ESP32 primeiro!");
+          return;
+        }
+
+        try {
+          const encoder = new TextEncoder();
+          await characteristic.writeValue(encoder.encode(cmd));
+          addToLog(`Comando enviado: ${cmd}`);
+
+          const index = parseInt(cmd.charAt(cmd.length - 1)) - 1;
+          if (cmd.startsWith("ON")) {
+            leds[index].className = "led on";
+          } else if (cmd.startsWith("OFF")) {
+            leds[index].className = "led off";
+          }
+        } catch (error) {
+          addToLog(`Erro ao enviar comando: ${error.message}`);
+        }
+      }
+
+      function handleVoiceCommand(text) {
+        // Verificar se o comando começa com "casa"
+        if (!text.includes("casa")) {
+          return; // Ignorar comandos que não começam com "casa"
+        }
+
+        addToLog(`Processando comando: "${text}"`);
+
+        // Normalizar o texto removendo acentos e caracteres especiais
+        const normalizedText = text
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^\w\s]/g, " ")
+          .trim();
+
+        // Padrões de comando mais flexíveis - usando palavras mais fáceis de reconhecer
+        const commands = [
+          // Ventilador
+          {
+            patterns: [
+              "ligar ventilador",
+              "liga ventilador",
+              "ventilador ligar",
+              "ventilador liga",
+              "ativar ventilador",
+              "ventilador ativar",
+            ],
+            action: "ON1",
+          },
+          {
+            patterns: [
+              "parar ventilador",
+              "para ventilador",
+              "ventilador parar",
+              "ventilador para",
+              "fechar ventilador",
+              "ventilador fechar",
+              "desativar ventilador",
+              "ventilador desativar",
+              "desligar ventilador",
+              "desliga ventilador",
+            ],
+            action: "OFF1",
+          },
+
+          // Luz
+          {
+            patterns: [
+              "ligar luz",
+              "liga luz",
+              "acender luz",
+              "luz ligar",
+              "luz liga",
+              "ativar luz",
+              "luz ativar",
+            ],
+            action: "ON2",
+          },
+          {
+            patterns: [
+              "apagar luz",
+              "apaga luz",
+              "luz apagar",
+              "luz apaga",
+              "fechar luz",
+              "fecha luz",
+              "luz fechar",
+              "luz fecha",
+              "desativar luz",
+              "luz desativar",
+              "desligar luz",
+              "desliga luz",
+            ],
+            action: "OFF2",
+          },
+
+          // Música
+          {
+            patterns: [
+              "ligar musica",
+              "liga musica",
+              "tocar musica",
+              "toca musica",
+              "musica ligar",
+              "musica liga",
+              "ativar musica",
+              "musica ativar",
+            ],
+            action: "ON3",
+          },
+          {
+            patterns: [
+              "parar musica",
+              "para musica",
+              "musica parar",
+              "musica para",
+              "fechar musica",
+              "fecha musica",
+              "musica fechar",
+              "musica fecha",
+              "desativar musica",
+              "musica desativar",
+              "desligar musica",
+              "desliga musica",
+            ],
+            action: "OFF3",
+          },
+
+          // Relé 4
+          {
+            patterns: [
+              "ligar rele 4",
+              "liga rele 4",
+              "rele 4 ligar",
+              "rele 4 liga",
+              "ativar rele 4",
+              "rele 4 ativar",
+            ],
+            action: "ON4",
+          },
+          {
+            patterns: [
+              "parar rele 4",
+              "para rele 4",
+              "rele 4 parar",
+              "rele 4 para",
+              "fechar rele 4",
+              "fecha rele 4",
+              "rele 4 fechar",
+              "rele 4 fecha",
+              "desativar rele 4",
+              "rele 4 desativar",
+              "desligar rele 4",
+              "desliga rele 4",
+            ],
+            action: "OFF4",
+          },
+        ];
+
+        // Procurar por correspondências
+        let commandFound = false;
+        for (const command of commands) {
+          for (const pattern of command.patterns) {
+            if (normalizedText.includes(pattern)) {
+              sendCommand(command.action);
+              commandFound = true;
+              break;
+            }
+          }
+          if (commandFound) break;
+        }
+
+        if (!commandFound) {
+          addToLog("Comando de voz não reconhecido");
+        }
+      }
+
+      function addToLog(message) {
+        const logEntry = document.createElement("div");
+        logEntry.className = "log-entry";
+        logEntry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+        commandLogEl.appendChild(logEntry);
+        commandLogEl.scrollTop = commandLogEl.scrollHeight;
+      }
+
+      // Inicializar quando a página carregar
+      window.addEventListener("load", function () {
+        initVoiceRecognition();
+        addToLog("Sistema inicializado");
+      });
+    </script>
+  </body>
+</html>
